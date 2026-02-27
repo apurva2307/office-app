@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// CORE & AUTHENTICATION
+// -----------------------------------------------------------------------------
+
+enum GlobalRole {
+  SUPER_ADMIN
+  ADMIN
+  SECTION_OFFICER
+  EMPLOYEE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  fullName      String
+  department    String?
+  globalRole    GlobalRole @default(EMPLOYEE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Module Permissions
+  moduleAccess  ModuleAccess[]
+
+  // Audit
+  auditLogs     AuditLog[]
+
+  // Relations - Recovery
+  createdRecoveries    RecoveryCase[] @relation("CreatedBy")
+  assignedRecoveries   RecoveryCase[] @relation("AssignedTo")
+  recoveryTimelineEntries RecoveryTimeline[]
+
+  // Relations - Applications
+  applications         Application[]
+  applicationComments  ApplicationComment[]
+  reviewedApplications Application[] @relation("Reviewer")
+
+  // Relations - Rewards
+  nominatedRewards     RewardNomination[] @relation("Nominator")
+  receivedRewards      RewardNomination[] @relation("Nominee")
+
+  // Relations - Attachments
+  uploadedAttachments  Attachment[]
+
+  // Relations - Hierarchy
+  supervisorOf   UserHierarchy[] @relation("Supervisor")
+  subordinateTo  UserHierarchy[] @relation("Subordinate")
+}
+
+enum AccessLevel {
+  READ
+  WRITE
+  APPROVE
+  ADMIN
+}
+
+model ModuleAccess {
+  id          String      @id @default(cuid())
+  userId      String
+  moduleKey   String      // e.g. "recovery", "application", "reward"
+  accessLevel AccessLevel
+  
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleKey])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+// -----------------------------------------------------------------------------
+// VERTICAL 1: RECOVERY TRACKING
+// -----------------------------------------------------------------------------
+
+enum RecoveryStatus {
+  DETECTED
+  NOTIFIED
+  PROCESSING
+  RECOVERED
+  CLOSED
+}
+
+model RecoveryCase {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  amount      Decimal        @db.Decimal(10, 2)
+  status      RecoveryStatus @default(DETECTED)
+  
+  employeeNumber String?
+  employeeName   String?
+  employeeDesignation String?
+  
+  assignedToUserId String?
+  createdByUserId  String
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  assignedTo  User?          @relation("AssignedTo", fields: [assignedToUserId], references: [id])
+  createdBy   User           @relation("CreatedBy", fields: [createdByUserId], references: [id])
+
+  timeline    RecoveryTimeline[]
+}
+
+model RecoveryTimeline {
+  id             String         @id @default(cuid())
+  caseId         String
+  note           String?
+  statusChangeTo RecoveryStatus?
+  createdById    String
+  createdAt      DateTime       @default(now())
+
+  recoveryCase   RecoveryCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation(fields: [createdById], references: [id])
+}
+
+// -----------------------------------------------------------------------------
+// VERTICAL 2: APPLICATIONS
+// -----------------------------------------------------------------------------
+
+enum ApplicationType {
+  GENERAL
+  GRIEVANCE
+  OTHERS
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Application {
+  id                String            @id @default(cuid())
+  applicantId       String
+  type              ApplicationType
+  subject           String
+  content           String
+  status            ApplicationStatus @default(PENDING)
+  
+  currentReviewerId String?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  applicant         User              @relation(fields: [applicantId], references: [id])
+  currentReviewer   User?             @relation("Reviewer", fields: [currentReviewerId], references: [id])
+  
+  comments          ApplicationComment[]
+  attachments       Attachment[]
+}
+
+model ApplicationComment {
+  id            String      @id @default(cuid())
+  applicationId String
+  authorId      String
+  text          String
+  createdAt     DateTime    @default(now())
+
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author        User        @relation(fields: [authorId], references: [id])
+}
+
+// -----------------------------------------------------------------------------
+// VERTICAL 3: REWARDS
+// -----------------------------------------------------------------------------
+
+enum RewardStatus {
+  NOMINATED
+  APPROVED
+  REJECTED
+}
+
+model RewardNomination {
+  id          String       @id @default(cuid())
+  nomineeId   String
+  nominatorId String
+  reason      String
+  category    String
+  status      RewardStatus @default(NOMINATED)
+  approvedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  nominee     User         @relation("Nominee", fields: [nomineeId], references: [id])
+  nominator   User         @relation("Nominator", fields: [nominatorId], references: [id])
+}
+
+// -----------------------------------------------------------------------------
+// FILE ATTACHMENTS
+// -----------------------------------------------------------------------------
+
+model Attachment {
+  id            String      @id @default(cuid())
+  fileName      String
+  filePath      String      // Storage path (local or S3 key)
+  fileSize      Int
+  mimeType      String
+  
+  applicationId String
+  uploadedById  String
+  createdAt     DateTime    @default(now())
+
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  uploadedBy    User        @relation(fields: [uploadedById], references: [id])
+}
+
+// -----------------------------------------------------------------------------
+// HIERARCHY MAPPING
+// -----------------------------------------------------------------------------
+
+enum RelationshipType {
+  EMPLOYEE_TO_SO
+  EMPLOYEE_TO_ADMIN
+  SO_TO_ADMIN
+  ADMIN_TO_SUPERADMIN
+}
+
+model UserHierarchy {
+  id               String           @id @default(cuid())
+  supervisorId     String
+  subordinateId    String
+  relationshipType RelationshipType
+  createdAt        DateTime         @default(now())
+
+  supervisor       User @relation("Supervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  subordinate      User @relation("Subordinate", fields: [subordinateId], references: [id], onDelete: Cascade)
+
+  @@unique([supervisorId, subordinateId, relationshipType])
+  @@index([supervisorId])
+  @@index([subordinateId])
+}
