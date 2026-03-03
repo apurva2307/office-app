@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { ModuleAccessDialog } from "./ModuleAccessDialog"
+import { EditUserDialog } from "./EditUserDialog"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Trash2, Loader2 } from "lucide-react"
@@ -68,18 +69,21 @@ export function UserList({
         return true
     }
 
+    const isAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN'
+
     return (
         <Table>
             <TableHeader>
                 <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Designation</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Joined</TableHead>
                     <TableHead>Module Permissions</TableHead>
                     <TableHead>Audit Logs</TableHead>
-                    {currentRole === 'SUPER_ADMIN' && <TableHead>Actions</TableHead>}
+                    {isAdmin && <TableHead>Actions</TableHead>}
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -91,6 +95,7 @@ export function UserList({
                                 {user.fullName}
                                 {isSelf && <span className="text-xs text-blue-500 ml-1">(You)</span>}
                             </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{user.designation || '—'}</TableCell>
                             <TableCell>{user.email}</TableCell>
                             <TableCell>
                                 {canEditRole(user.id) ? (
@@ -120,17 +125,23 @@ export function UserList({
                             <TableCell>{format(new Date(user.createdAt), 'MMM d, yyyy')}</TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-2">
-                                    <div className="flex -space-x-1 overflow-hidden">
-                                        {user.moduleAccess?.length > 0 ? (
-                                            user.moduleAccess.map((acc: any) => (
-                                                <Badge key={acc.id} variant="outline" className="text-[10px] px-1 h-5 bg-blue-50">
-                                                    {acc.moduleKey[0].toUpperCase()}
-                                                </Badge>
-                                            ))
-                                        ) : (
-                                            <span className="text-[10px] text-muted-foreground italic">None</span>
-                                        )}
-                                    </div>
+                                    {(user.globalRole === 'SUPER_ADMIN' || user.globalRole === 'ADMIN') ? (
+                                        <Badge variant="outline" className="text-[10px] px-2 h-5 bg-green-50 text-green-700 border-green-200">
+                                            Full Access
+                                        </Badge>
+                                    ) : (
+                                        <div className="flex -space-x-1 overflow-hidden">
+                                            {user.moduleAccess?.length > 0 ? (
+                                                user.moduleAccess.map((acc: any) => (
+                                                    <Badge key={acc.id} variant="outline" className="text-[10px] px-1 h-5 bg-blue-50">
+                                                        {acc.moduleKey[0].toUpperCase()}
+                                                    </Badge>
+                                                ))
+                                            ) : (
+                                                <span className="text-[10px] text-muted-foreground italic">None</span>
+                                            )}
+                                        </div>
+                                    )}
                                     <ModuleAccessDialog user={user} onUpdate={() => router.refresh()} />
                                 </div>
                             </TableCell>
@@ -141,23 +152,28 @@ export function UserList({
                                     </Link>
                                 </Button>
                             </TableCell>
-                            {currentRole === 'SUPER_ADMIN' && (
+                            {isAdmin && (
                                 <TableCell>
-                                    {!isSelf && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                            onClick={() => handleDelete(user.id, user.fullName)}
-                                            disabled={deletingId === user.id}
-                                        >
-                                            {deletingId === user.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                            )}
-                                        </Button>
-                                    )}
+                                    <div className="flex items-center gap-1">
+                                        {!isSelf && (
+                                            <EditUserDialog user={user} onUpdate={() => router.refresh()} />
+                                        )}
+                                        {!isSelf && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                onClick={() => handleDelete(user.id, user.fullName)}
+                                                disabled={deletingId === user.id}
+                                            >
+                                                {deletingId === user.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4" />
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
                                 </TableCell>
                             )}
                         </TableRow>

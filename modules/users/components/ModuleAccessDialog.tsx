@@ -3,19 +3,42 @@
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Shield, Check, Loader2 } from "lucide-react"
+import { Shield, Check, Loader2, Info } from "lucide-react"
 import { updateUserModuleAccess } from "../actions"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const MODULES = [
-    { key: "recovery", label: "Recovery Tracking" },
-    { key: "application", label: "Leave & Applications" },
-    { key: "reward", label: "Rewards & Recognition" },
-    { key: "users", label: "User Management" },
+const MODULES: { key: string; label: string; levels: string[] }[] = [
+    { key: "recovery", label: "Recovery Tracking", levels: ["READ", "WRITE", "ADMIN"] },
+    { key: "application", label: "Applications", levels: ["READ", "WRITE", "APPROVE", "ADMIN"] },
+    { key: "reward", label: "Rewards & Recognition", levels: ["READ", "WRITE", "APPROVE", "ADMIN"] },
+    { key: "users", label: "User Management", levels: ["READ", "WRITE", "ADMIN"] },
 ]
 
-const ACCESS_LEVELS = ["READ", "WRITE", "APPROVE", "ADMIN"]
+const LEVEL_DESCRIPTIONS: Record<string, Record<string, string>> = {
+    recovery: {
+        READ: "View cases & timelines",
+        WRITE: "Create/edit cases, update status",
+        ADMIN: "Full control, delete cases",
+    },
+    application: {
+        READ: "View applications",
+        WRITE: "Submit applications",
+        APPROVE: "Approve/reject applications",
+        ADMIN: "Full control, delete applications",
+    },
+    reward: {
+        READ: "View nominations",
+        WRITE: "Nominate for rewards",
+        APPROVE: "Approve/reject nominations",
+        ADMIN: "Full control, delete nominations",
+    },
+    users: {
+        READ: "View user list",
+        WRITE: "Create users (Employee/SO)",
+        ADMIN: "Full control, delete users",
+    },
+}
 
 export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: () => void }) {
     const [open, setOpen] = useState(false)
@@ -23,6 +46,8 @@ export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: ()
     const [permissions, setPermissions] = useState<Record<string, string>>(
         user.moduleAccess?.reduce((acc: any, cur: any) => ({ ...acc, [cur.moduleKey]: cur.accessLevel }), {}) || {}
     )
+
+    const isImplicitFullAccess = user.globalRole === "SUPER_ADMIN" || user.globalRole === "ADMIN"
 
     const handleSave = async () => {
         setLoading(true)
@@ -52,7 +77,7 @@ export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: ()
                     Permissions
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader>
                     <DialogTitle>Module Permissions</DialogTitle>
                     <DialogDescription>
@@ -60,32 +85,60 @@ export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: ()
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4 py-4">
+                {isImplicitFullAccess && (
+                    <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 p-3">
+                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                            <strong>{user.globalRole === "SUPER_ADMIN" ? "Super Admins" : "Admins"}</strong> automatically have full access to all modules.
+                            The settings below only apply when the user&apos;s role changes.
+                        </p>
+                    </div>
+                )}
+
+                <div className="space-y-3 py-2">
                     {MODULES.map((mod) => (
-                        <div key={mod.key} className="flex items-center justify-between gap-4">
-                            <span className="text-sm font-medium">{mod.label}</span>
-                            <Select
-                                value={permissions[mod.key] || "NONE"}
-                                onValueChange={(val) => setPermissions(prev => {
-                                    const next = { ...prev }
-                                    if (val === "NONE") {
-                                        delete next[mod.key]
-                                    } else {
-                                        next[mod.key] = val
-                                    }
-                                    return next
-                                })}
-                            >
-                                <SelectTrigger className="w-[140px]">
-                                    <SelectValue placeholder="No Access" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="NONE">No Access</SelectItem>
-                                    {ACCESS_LEVELS.map(level => (
-                                        <SelectItem key={level} value={level}>{level}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        <div key={mod.key} className="space-y-1">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <span className="text-sm font-medium">{mod.label}</span>
+                                    {isImplicitFullAccess && (
+                                        <span className="ml-2 text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-1.5 py-0.5 border border-green-200">
+                                            FULL ACCESS
+                                        </span>
+                                    )}
+                                </div>
+                                <Select
+                                    value={isImplicitFullAccess ? "ADMIN" : (permissions[mod.key] || "NONE")}
+                                    onValueChange={(val) => setPermissions(prev => {
+                                        const next = { ...prev }
+                                        if (val === "NONE") {
+                                            delete next[mod.key]
+                                        } else {
+                                            next[mod.key] = val
+                                        }
+                                        return next
+                                    })}
+                                    disabled={isImplicitFullAccess}
+                                >
+                                    <SelectTrigger className="w-[140px]">
+                                        <SelectValue placeholder="No Access" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="NONE">No Access</SelectItem>
+                                        {mod.levels.map(level => (
+                                            <SelectItem key={level} value={level}>
+                                                {level}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Show description of selected level */}
+                            {!isImplicitFullAccess && permissions[mod.key] && LEVEL_DESCRIPTIONS[mod.key]?.[permissions[mod.key]] && (
+                                <p className="text-[11px] text-muted-foreground pl-1">
+                                    {LEVEL_DESCRIPTIONS[mod.key][permissions[mod.key]]}
+                                </p>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -94,7 +147,7 @@ export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: ()
                     <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
                         Cancel
                     </Button>
-                    <Button onClick={handleSave} disabled={loading}>
+                    <Button onClick={handleSave} disabled={loading || isImplicitFullAccess}>
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Save Changes
                     </Button>

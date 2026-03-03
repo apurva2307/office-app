@@ -1,4 +1,5 @@
 import { auth } from "@/modules/core/auth"
+import { checkModuleAccess } from "@/modules/users/actions"
 import { getUsers, getAuditLogs } from "@/modules/users/actions"
 import { UserList } from "@/modules/users/components/UserList"
 import { CreateUserDialog } from "@/modules/users/components/CreateUserDialog"
@@ -6,13 +7,17 @@ import { Button } from "@/components/ui/button"
 import { ShieldAlert, History, Users } from "lucide-react"
 import { AuditLogTable } from "@/modules/core/components/AuditLogTable"
 import Link from "next/link"
+import { AccessLevel } from "@prisma/client"
 
 export default async function SettingsPage(props: { searchParams: Promise<{ userId?: string }> }) {
     const searchParams = await props.searchParams
     const session = await auth()
 
     const role = session?.user?.role
-    if (role !== 'SUPER_ADMIN' && role !== 'ADMIN') {
+
+    // Check module access: users module READ or higher, or ADMIN/SUPER_ADMIN role
+    const hasUsersAccess = await checkModuleAccess("users", AccessLevel.READ)
+    if (!hasUsersAccess) {
         return (
             <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
                 <ShieldAlert className="h-16 w-16 text-red-500" />
@@ -21,6 +26,9 @@ export default async function SettingsPage(props: { searchParams: Promise<{ user
             </div>
         )
     }
+
+    // Check if user can create users (WRITE+ access)
+    const canCreateUsers = await checkModuleAccess("users", AccessLevel.WRITE)
 
     const users = await getUsers()
     const logs = await getAuditLogs()
@@ -38,7 +46,7 @@ export default async function SettingsPage(props: { searchParams: Promise<{ user
                             <Link href="/dashboard/settings">Clear Filter</Link>
                         </Button>
                     )}
-                    <CreateUserDialog />
+                    {canCreateUsers && <CreateUserDialog />}
                 </div>
             </div>
 

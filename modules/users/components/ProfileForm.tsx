@@ -13,7 +13,7 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, User, Mail, Shield, Building } from "lucide-react"
+import { Loader2, CheckCircle, User, Mail, Shield, Building, Briefcase } from "lucide-react"
 import { updateProfile } from "@/modules/users/actions"
 import { useRouter } from "next/navigation"
 
@@ -21,12 +21,14 @@ type ProfileData = {
     fullName: string
     email: string
     globalRole: string
-    department: string | null
+    department: string
+    designation: string
 }
 
 export function ProfileForm({ user }: { user: ProfileData }) {
     const [fullName, setFullName] = useState(user.fullName)
-    const [department, setDepartment] = useState(user.department || "")
+    const [department, setDepartment] = useState(user.department || "Accounts")
+    const [designation, setDesignation] = useState(user.designation || "")
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
@@ -39,7 +41,7 @@ export function ProfileForm({ user }: { user: ProfileData }) {
         setLoading(true)
 
         try {
-            const result = await updateProfile({ fullName, department: department || undefined })
+            const result = await updateProfile({ fullName, department: department || undefined, designation: designation || undefined })
             if (result.success) {
                 setSuccess(true)
                 router.refresh()
@@ -89,7 +91,7 @@ export function ProfileForm({ user }: { user: ProfileData }) {
                 <form onSubmit={handleSubmit}>
                     <CardHeader>
                         <CardTitle>Edit Profile</CardTitle>
-                        <CardDescription>Update your name and department.</CardDescription>
+                        <CardDescription>Update your name, designation, and department.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <div className="grid gap-2">
@@ -103,10 +105,20 @@ export function ProfileForm({ user }: { user: ProfileData }) {
                             />
                         </div>
                         <div className="grid gap-2">
+                            <Label htmlFor="designation">Designation</Label>
+                            <Input
+                                id="designation"
+                                required
+                                placeholder="e.g. Accountant, Clerk, Officer"
+                                value={designation}
+                                onChange={(e) => setDesignation(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid gap-2">
                             <Label htmlFor="department">Department</Label>
                             <Input
                                 id="department"
-                                placeholder="e.g. Finance, IT"
+                                placeholder="Accounts"
                                 value={department}
                                 onChange={(e) => setDepartment(e.target.value)}
                             />

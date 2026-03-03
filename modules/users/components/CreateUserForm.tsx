@@ -22,8 +22,9 @@ import { Loader2 } from "lucide-react"
 const formSchema = z.object({
     email: z.string().email("Invalid email"),
     fullName: z.string().min(2, "Full name is required"),
+    designation: z.string().min(2, "Designation is required"),
     role: z.enum(["SUPER_ADMIN", "ADMIN", "SECTION_OFFICER", "EMPLOYEE"]),
-    department: z.string().optional(),
+    department: z.string().min(1, "Department is required"),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
 })
 
@@ -36,8 +37,9 @@ export function CreateUserForm({ onSuccess }: { onSuccess?: () => void }) {
         defaultValues: {
             email: "",
             fullName: "",
+            designation: "",
             role: "EMPLOYEE",
-            department: "",
+            department: "Accounts",
             password: "Password@123",
         },
     })
@@ -77,6 +79,19 @@ export function CreateUserForm({ onSuccess }: { onSuccess?: () => void }) {
                             <FormLabel>Full Name</FormLabel>
                             <FormControl>
                                 <Input placeholder="John Doe" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="designation"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Designation</FormLabel>
+                            <FormControl>
+                                <Input placeholder="e.g. Accountant, Clerk, Officer" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -125,7 +140,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess?: () => void }) {
                         <FormItem>
                             <FormLabel>Department</FormLabel>
                             <FormControl>
-                                <Input placeholder="Finance, IT, etc." {...field} />
+                                <Input placeholder="Accounts" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>

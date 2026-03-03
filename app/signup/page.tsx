@@ -20,7 +20,8 @@ import Link from "next/link";
 export default function SignUpPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [department, setDepartment] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [department, setDepartment] = useState("Accounts");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,6 +49,7 @@ export default function SignUpPage() {
       const result = await registerUser({
         email,
         fullName,
+        designation,
         department: department || undefined,
         password,
       });
@@ -126,11 +128,22 @@ export default function SignUpPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="department">Department (Optional)</Label>
+                <Label htmlFor="designation">Designation</Label>
+                <Input
+                  id="designation"
+                  type="text"
+                  placeholder="e.g. Accountant, Clerk, Officer"
+                  required
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="department">Department</Label>
                 <Input
                   id="department"
                   type="text"
-                  placeholder="Finance, IT, etc."
+                  placeholder="Accounts"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
                 />

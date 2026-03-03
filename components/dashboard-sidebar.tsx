@@ -1,7 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -32,9 +32,10 @@ import {
   Crown,
   Shield,
   Briefcase,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 type SidebarUser = {
@@ -46,6 +47,26 @@ type SidebarUser = {
 
 function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  const handleNavigation = (href: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (href === pathname) return;
+    setNavigatingTo(href);
+    onNavigate?.();
+    // Trigger the global navigation overlay
+    if (typeof window !== "undefined" && (window as any).__setNavLoading) {
+      (window as any).__setNavLoading(true);
+    }
+    startTransition(() => {
+      router.push(href);
+    });
+  };
+
+  // Reset navigatingTo when the route actually changes
+  const activeNavigating = isPending ? navigatingTo : null;
 
   const hasAccess = (moduleKey: string) => {
     if (user.role === "SUPER_ADMIN") return true;
@@ -63,7 +84,9 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
     (l) => l.module === "dashboard" || hasAccess(l.module),
   );
 
-  if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") {
+  const hasUsersModuleAccess = user.moduleAccess?.some((a) => a.moduleKey === "users") || false;
+
+  if (user.role === "SUPER_ADMIN" || user.role === "ADMIN" || hasUsersModuleAccess) {
     links.push({ href: "/dashboard/hierarchy", label: "Hierarchy", icon: GitBranch, module: "hierarchy" });
     links.push({ href: "/dashboard/settings", label: "Settings", icon: Settings, module: "settings" });
   }
@@ -74,7 +97,7 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
         <Link
           className="flex items-center gap-2 font-semibold"
           href="/dashboard"
-          onClick={onNavigate}
+          onClick={(e) => handleNavigation("/dashboard", e)}
         >
           <span>Sr. DFM Office App</span>
         </Link>
@@ -84,6 +107,7 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
           {links.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
+            const isLoading = activeNavigating === link.href;
             return (
               <Link
                 key={link.href}
@@ -92,11 +116,16 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
                   isActive
                     ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
                     : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
+                  isLoading && "opacity-70",
                 )}
                 href={link.href}
-                onClick={onNavigate}
+                onClick={(e) => handleNavigation(link.href, e)}
               >
-                <Icon className="h-4 w-4" />
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
                 {link.label}
               </Link>
             );

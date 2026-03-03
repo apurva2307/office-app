@@ -1,5 +1,6 @@
 import { auth } from "@/modules/core/auth"
 import { DashboardSidebar, MobileNav } from "@/components/dashboard-sidebar"
+import { NavigationLoader } from "@/components/navigation-loader"
 
 export default async function DashboardLayout({
     children,
@@ -24,9 +25,11 @@ export default async function DashboardLayout({
             <DashboardSidebar user={user} />
 
             {/* Main Content */}
-            <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6 overflow-y-auto">
+            <main className="relative flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6 overflow-y-auto">
+                <NavigationLoader />
                 {children}
             </main>
         </div>
     )
 }
+

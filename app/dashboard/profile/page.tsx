@@ -14,6 +14,7 @@ export default async function ProfilePage() {
             email: true,
             globalRole: true,
             department: true,
+            designation: true,
         }
     })
 

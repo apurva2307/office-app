@@ -22,52 +22,39 @@ export async function checkModuleAccess(moduleKey: string, requiredLevel: Access
   const session = await auth()
   if (!session?.user?.id) return returnUserId ? false : false
 
-  // Fetch role and access directly from DB for real-time accuracy
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      moduleAccess: {
-        where: { moduleKey }
-      }
-    }
-  })
-
-  if (!user) return returnUserId ? false : false
-
   // Super Admins and Admins always have full access
-  if (user.globalRole === 'SUPER_ADMIN' || user.globalRole === 'ADMIN') {
-    return returnUserId ? user.id : true
+  if (session.user.role === 'SUPER_ADMIN' || session.user.role === 'ADMIN') {
+    return returnUserId ? session.user.id : true
   }
 
-  const moduleAccess = user.moduleAccess[0]
+  // Use module access data embedded in the JWT session instead of hitting the DB again
+  const moduleAccess = session.user.moduleAccess?.find((a: any) => a.moduleKey === moduleKey)
   if (!moduleAccess) return returnUserId ? false : false
 
   const levels = [AccessLevel.READ, AccessLevel.WRITE, AccessLevel.APPROVE, AccessLevel.ADMIN]
-  const userLevelIndex = levels.indexOf(moduleAccess.accessLevel)
+  const userLevelIndex = levels.indexOf(moduleAccess.accessLevel as any)
   const requiredLevelIndex = levels.indexOf(requiredLevel)
 
   const hasAccess = userLevelIndex >= requiredLevelIndex
   if (!hasAccess) return returnUserId ? false : false
 
-  return returnUserId ? user.id : true
+  return returnUserId ? session.user.id : true
 }
 
 export async function getUsers() {
-  const session = await auth();
-  if (
-    !session?.user ||
-    (session.user.role !== "SUPER_ADMIN" &&
-      session.user.role !== "ADMIN")
-  ) {
-    throw new Error("Unauthorized");
+  const userId = await checkModuleAccess("users", AccessLevel.READ, true)
+  if (!userId) {
+    throw new Error("Unauthorized: No access to User Management");
   }
 
-  // Filter by hierarchy — only show subordinates + self
+  const caller = await prisma.user.findUnique({ where: { id: userId }, select: { globalRole: true } })
+
+  // Filter by hierarchy — only show subordinates + self for non-SUPER_ADMIN
   let whereFilter: any = {}
-  if (session.user.role === 'ADMIN') {
+  if (caller?.globalRole !== 'SUPER_ADMIN') {
     const { getSubordinateUserIds } = await import("@/modules/hierarchy/hierarchy.service")
-    const subordinateIds = await getSubordinateUserIds(session.user.id)
-    const visibleIds = [session.user.id, ...subordinateIds]
+    const subordinateIds = await getSubordinateUserIds(userId)
+    const visibleIds = [userId, ...subordinateIds]
     whereFilter = { id: { in: visibleIds } }
   }
   // SUPER_ADMIN sees all users
@@ -78,6 +65,7 @@ export async function getUsers() {
       id: true,
       email: true,
       fullName: true,
+      designation: true,
       globalRole: true,
       department: true,
       createdAt: true,
@@ -177,13 +165,22 @@ export async function getAuditLogs() {
 export async function createUser(data: {
   email: string,
   fullName: string,
+  designation: string,
   role: "SUPER_ADMIN" | "ADMIN" | "SECTION_OFFICER" | "EMPLOYEE",
   department?: string,
   password?: string
 }) {
-  const session = await auth()
-  if (!session?.user || (session.user.role !== 'SUPER_ADMIN' && session.user.role !== 'ADMIN')) {
-    throw new Error("Unauthorized")
+  const userId = await checkModuleAccess("users", AccessLevel.WRITE, true)
+  if (!userId) {
+    throw new Error("Unauthorized: No access to create users")
+  }
+
+  // Determine caller's effective access level
+  const hasAdminAccess = await checkModuleAccess("users", AccessLevel.ADMIN)
+
+  // WRITE-level users can only create EMPLOYEE/SECTION_OFFICER
+  if (!hasAdminAccess && (data.role === 'SUPER_ADMIN' || data.role === 'ADMIN')) {
+    throw new Error("Insufficient permissions: Cannot create Admin or Super Admin users")
   }
 
   const tempPassword = data.password || Math.random().toString(36).slice(-10) + "!"
@@ -194,14 +191,15 @@ export async function createUser(data: {
       data: {
         email: data.email,
         fullName: data.fullName,
+        designation: data.designation,
         globalRole: data.role,
-        department: data.department,
+        department: data.department || 'Accounts',
         passwordHash
       }
     })
 
     await logAudit({
-      userId: session.user.id,
+      userId,
       action: AuditAction.CREATE,
       entityType: EntityType.USER,
       entityId: user.id,
@@ -228,17 +226,17 @@ export async function createUser(data: {
   }
 }
 
-export async function deleteUser(userId: string) {
-  const session = await auth()
-  if (!session?.user?.id) throw new Error("Unauthorized")
-
-  if (session.user.role !== 'SUPER_ADMIN') {
-    throw new Error("Only Super Admins can delete users")
+export async function deleteUser(targetUserId: string) {
+  const callerId = await checkModuleAccess("users", AccessLevel.ADMIN, true)
+  if (!callerId) {
+    throw new Error("Unauthorized: Admin-level User Management access required")
   }
 
-  if (userId === session.user.id) {
+  if (targetUserId === callerId) {
     throw new Error("Cannot delete your own account")
   }
+
+  const userId = targetUserId
 
   const target = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, fullName: true, globalRole: true } })
   if (!target) throw new Error("User not found")
@@ -294,7 +292,7 @@ export async function deleteUser(userId: string) {
   await prisma.user.delete({ where: { id: userId } })
 
   await logAudit({
-    userId: session.user.id,
+    userId: callerId,
     action: AuditAction.DELETE,
     entityType: EntityType.USER,
     entityId: userId,
@@ -332,7 +330,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 // ─── Profile: Update own name ───────────────────────────────────────────────────
 
-export async function updateProfile(data: { fullName: string, department?: string }) {
+export async function updateProfile(data: { fullName: string, department?: string, designation?: string }) {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
 
@@ -345,6 +343,7 @@ export async function updateProfile(data: { fullName: string, department?: strin
     data: {
       fullName: data.fullName.trim(),
       department: data.department?.trim() || undefined,
+      designation: data.designation?.trim() || undefined,
     }
   })
 
@@ -365,14 +364,12 @@ export async function updateProfile(data: { fullName: string, department?: strin
 
 export async function updateUserRole(userId: string, newRole: "SUPER_ADMIN" | "ADMIN" | "SECTION_OFFICER" | "EMPLOYEE") {
   const session = await auth()
-  if (!session?.user?.id) throw new Error("Unauthorized")
-
-  const callerRole = session.user.role
-
-  // Only ADMIN and SUPER_ADMIN can change roles
-  if (callerRole !== 'SUPER_ADMIN' && callerRole !== 'ADMIN') {
-    throw new Error("Unauthorized")
+  const callerId = await checkModuleAccess("users", AccessLevel.ADMIN, true)
+  if (!callerId) {
+    throw new Error("Unauthorized: Admin-level User Management access required")
   }
+
+  const callerRole = session?.user?.role
 
   // ADMIN cannot promote to SUPER_ADMIN or ADMIN
   if (callerRole === 'ADMIN' && (newRole === 'SUPER_ADMIN' || newRole === 'ADMIN')) {
@@ -380,7 +377,7 @@ export async function updateUserRole(userId: string, newRole: "SUPER_ADMIN" | "A
   }
 
   // Cannot change own role
-  if (userId === session.user.id) {
+  if (userId === callerId) {
     throw new Error("Cannot change your own role")
   }
 
@@ -397,7 +394,7 @@ export async function updateUserRole(userId: string, newRole: "SUPER_ADMIN" | "A
   })
 
   await logAudit({
-    userId: session.user.id,
+    userId: callerId,
     action: AuditAction.UPDATE,
     entityType: EntityType.USER,
     entityId: userId,
@@ -408,10 +405,62 @@ export async function updateUserRole(userId: string, newRole: "SUPER_ADMIN" | "A
   return { success: true }
 }
 
+// ─── Admin: Edit user details ───────────────────────────────────────────────────
+
+export async function adminEditUser(userId: string, data: {
+  fullName: string,
+  email: string,
+  designation: string,
+  department: string,
+}) {
+  const callerId = await checkModuleAccess("users", AccessLevel.ADMIN, true)
+  if (!callerId) {
+    throw new Error("Unauthorized: Admin-level User Management access required")
+  }
+
+  if (!data.fullName || data.fullName.trim().length < 2) {
+    return { success: false, error: "Name must be at least 2 characters" }
+  }
+  if (!data.email || !data.email.includes("@")) {
+    return { success: false, error: "Valid email is required" }
+  }
+  if (!data.designation || data.designation.trim().length < 2) {
+    return { success: false, error: "Designation is required" }
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        fullName: data.fullName.trim(),
+        email: data.email.trim(),
+        designation: data.designation.trim(),
+        department: data.department.trim() || 'Accounts',
+      }
+    })
+
+    await logAudit({
+      userId: callerId,
+      action: AuditAction.UPDATE,
+      entityType: EntityType.USER,
+      entityId: userId,
+      metadata: { action: "admin_edit_user", changes: data }
+    })
+
+    revalidatePath('/dashboard/settings')
+    return { success: true }
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      return { success: false, error: "Email already in use by another user" }
+    }
+    return { success: false, error: "Failed to update user" }
+  }
+}
 
 export async function registerUser(data: {
   email: string,
   fullName: string,
+  designation: string,
   department?: string,
   password: string
 }) {
@@ -423,8 +472,9 @@ export async function registerUser(data: {
       data: {
         email: data.email,
         fullName: data.fullName,
+        designation: data.designation,
         globalRole: 'EMPLOYEE',
-        department: data.department,
+        department: data.department || 'Accounts',
         passwordHash
       }
     })
@@ -443,9 +493,9 @@ export async function registerUser(data: {
 }
 
 export async function resetPasswordByAdmin(userId: string) {
-  const session = await auth()
-  if (!session?.user || session.user.role !== 'SUPER_ADMIN') {
-    throw new Error("Only Super Admins can reset passwords")
+  const callerId = await checkModuleAccess("users", AccessLevel.ADMIN, true)
+  if (!callerId) {
+    throw new Error("Unauthorized: Admin-level User Management access required")
   }
 
   const newPassword = Math.random().toString(36).slice(-10) + "!"
@@ -457,7 +507,7 @@ export async function resetPasswordByAdmin(userId: string) {
   })
 
   await logAudit({
-    userId: session.user.id,
+    userId: callerId,
     action: AuditAction.UPDATE,
     entityType: EntityType.USER,
     entityId: userId,

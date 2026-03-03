@@ -22,9 +22,12 @@ export type ReviewApplicationInput = {
 // Actions
 
 export async function submitApplication(data: CreateApplicationInput) {
-    const userId = await checkModuleAccess("application", AccessLevel.WRITE, true)
+    // Any authenticated user can submit applications
+    const { auth } = await import("@/modules/core/auth")
+    const session = await auth()
+    const userId = session?.user?.id
     if (!userId) {
-        throw new Error("Unauthorized: Insufficient permissions to submit applications")
+        throw new Error("Unauthorized: You must be logged in to submit applications")
     }
 
     try {
@@ -101,7 +104,10 @@ export async function reviewApplication(data: ReviewApplicationInput) {
 }
 
 export async function getApplications(filter?: { status?: ApplicationStatus, type?: ApplicationType }) {
-    const userId = await checkModuleAccess("application", AccessLevel.READ, true)
+    // Any authenticated user can see applications (at minimum their own)
+    const { auth } = await import("@/modules/core/auth")
+    const session = await auth()
+    const userId = session?.user?.id
     if (!userId) return []
 
     // Determine visibility based on role
@@ -112,17 +118,18 @@ export async function getApplications(filter?: { status?: ApplicationStatus, typ
 
     let whereFilter: any = { ...filter }
 
-    if (user?.globalRole === 'EMPLOYEE') {
-        // Employees see only their own applications
-        whereFilter = { ...whereFilter, applicantId: userId }
+    if (user?.globalRole === 'SUPER_ADMIN' || user?.globalRole === 'ADMIN') {
+        // ADMIN and SUPER_ADMIN see all
     } else if (user?.globalRole === 'SECTION_OFFICER') {
         // Section Officers see their own + mapped subordinates' applications
         const { getSubordinateUserIds } = await import("@/modules/hierarchy/hierarchy.service")
         const subordinateIds = await getSubordinateUserIds(userId)
         const visibleIds = [userId, ...subordinateIds]
         whereFilter = { ...whereFilter, applicantId: { in: visibleIds } }
+    } else {
+        // Employees see only their own applications
+        whereFilter = { ...whereFilter, applicantId: userId }
     }
-    // ADMIN and SUPER_ADMIN see all
 
     return prisma.application.findMany({
         where: whereFilter,
