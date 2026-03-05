@@ -3,6 +3,7 @@ import { checkModuleAccess, getUsersForDropdown } from "@/modules/users/actions"
 import { RecoveryTable } from "@/modules/recovery/components/RecoveryTable";
 import { NewRecoveryDialog } from "@/modules/recovery/components/NewRecoveryDialog";
 import { ShieldAlert } from "lucide-react";
+import { AccessLevel } from "@prisma/client";
 
 export default async function RecoveryPage() {
   const hasAccess = await checkModuleAccess("recovery");
@@ -15,6 +16,8 @@ export default async function RecoveryPage() {
       </div>
     )
   }
+
+  const canUpdate = await checkModuleAccess("recovery", AccessLevel.WRITE)
 
   const [recoveries, users] = await Promise.all([
     getRecoveries(),
@@ -35,7 +38,7 @@ export default async function RecoveryPage() {
         <NewRecoveryDialog users={users} />
       </div>
 
-      <RecoveryTable data={recoveries} />
+      <RecoveryTable data={recoveries} canUpdate={!!canUpdate} />
     </div>
   );
 }

@@ -26,6 +26,16 @@ export async function nominateReward(data: NominateRewardInput) {
         throw new Error("Unauthorized: Insufficient permissions to nominate rewards")
     }
 
+    // Non-SUPER_ADMIN can only nominate subordinates
+    const caller = await prisma.user.findUnique({ where: { id: userId }, select: { globalRole: true } })
+    if (caller?.globalRole !== 'SUPER_ADMIN') {
+        const { getSubordinateUserIds } = await import("@/modules/hierarchy/hierarchy.service")
+        const subordinateIds = await getSubordinateUserIds(userId)
+        if (!subordinateIds.includes(data.nomineeId)) {
+            throw new Error("You can only nominate users mapped under you")
+        }
+    }
+
     try {
         const nomination = await prisma.rewardNomination.create({
             data: {

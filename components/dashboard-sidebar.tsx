@@ -69,7 +69,7 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
   const activeNavigating = isPending ? navigatingTo : null;
 
   const hasAccess = (moduleKey: string) => {
-    if (user.role === "SUPER_ADMIN") return true;
+    if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") return true;
     return user.moduleAccess?.some((a) => a.moduleKey === moduleKey) || false;
   };
 
@@ -141,7 +141,7 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
           <p className="text-xs text-gray-500">{user.email}</p>
 
           {/* 3. Module Access Badges */}
-          {user.moduleAccess && user.moduleAccess.length > 0 && (
+          {/* {user.moduleAccess && user.moduleAccess.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {user.moduleAccess.map((acc) => (
                 <span
@@ -156,7 +156,7 @@ function SidebarContent({ user, onNavigate }: { user: SidebarUser; onNavigate?: 
                 </span>
               ))}
             </div>
-          )}
+          )} */}
 
           {/* 4. Role Badge with icon */}
           <div>

@@ -14,6 +14,7 @@ import {
 import { RecoveryStatus } from "@prisma/client"; // This might error if generation failed
 import { format } from "date-fns";
 import { Plus, Search } from "lucide-react";
+import { RecoveryUpdateAction } from "@/modules/recovery/components/RecoveryUpdateAction";
 
 // Types (Mirroring Prisma for now to avoid build errors if generation failed)
 type RecoveryCase = {
@@ -28,7 +29,7 @@ type RecoveryCase = {
   assignedTo?: { fullName: string } | null;
 };
 
-export function RecoveryTable({ data }: { data: any[] }) {
+export function RecoveryTable({ data, canUpdate }: { data: any[], canUpdate: boolean }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -48,6 +49,7 @@ export function RecoveryTable({ data }: { data: any[] }) {
               <TableHead>Status</TableHead>
               <TableHead>Assigned To</TableHead>
               <TableHead>Date</TableHead>
+              {canUpdate && <TableHead className="w-[50px]"></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -83,6 +85,11 @@ export function RecoveryTable({ data }: { data: any[] }) {
                   <TableCell>
                     {format(new Date(item.createdAt), "MMM d, yyyy")}
                   </TableCell>
+                  {canUpdate && (
+                    <TableCell>
+                      <RecoveryUpdateAction recoveryId={item.id} currentStatus={item.status} />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}

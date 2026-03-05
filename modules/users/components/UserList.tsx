@@ -125,7 +125,7 @@ export function UserList({
                             <TableCell>{format(new Date(user.createdAt), 'MMM d, yyyy')}</TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-2">
-                                    {(user.globalRole === 'SUPER_ADMIN' || user.globalRole === 'ADMIN') ? (
+                                    {user.globalRole === 'SUPER_ADMIN' ? (
                                         <Badge variant="outline" className="text-[10px] px-2 h-5 bg-green-50 text-green-700 border-green-200">
                                             Full Access
                                         </Badge>

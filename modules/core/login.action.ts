@@ -3,9 +3,15 @@
 import { signIn } from "@/modules/core/auth"
 import { AuthError } from "next-auth"
 import { redirect } from "next/navigation"
+import { verifyTurnstileToken } from "@/modules/core/turnstile.service"
 
-export async function loginAction(email: string, password: string) {
+export async function loginAction(email: string, password: string, turnstileToken: string) {
     try {
+        const tokenVerification = await verifyTurnstileToken(turnstileToken);
+        if (!tokenVerification.success) {
+            return { success: false, error: tokenVerification.error };
+        }
+
         await signIn("credentials", {
             email,
             password,

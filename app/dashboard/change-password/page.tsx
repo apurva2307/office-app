@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -96,9 +97,8 @@ export default function ChangePasswordPage() {
           <CardContent className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="currentPassword">Current Password</Label>
-              <Input
+              <PasswordInput
                 id="currentPassword"
-                type="password"
                 required
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -106,9 +106,8 @@ export default function ChangePasswordPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="newPassword">New Password</Label>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 required
                 minLength={6}
                 value={newPassword}
@@ -117,9 +116,8 @@ export default function ChangePasswordPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="confirmPassword">Confirm New Password</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 required
                 minLength={6}
                 value={confirmPassword}

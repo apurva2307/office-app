@@ -7,10 +7,65 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { sendWelcomeEmail } from "@/modules/core/email.service";
 import { logAudit, AuditAction, EntityType } from "@/modules/core/audit.service";
+import { verifyTurnstileToken } from "@/modules/core/turnstile.service";
+
+const ALL_MODULES = ["recovery", "application", "reward", "users"]
+
+/**
+ * Sync ModuleAccess DB records to match a user's role defaults.
+ * - SUPER_ADMIN: ADMIN level on all modules
+ * - ADMIN: READ on recovery/application, WRITE on reward/users
+ * - Others: no auto-sync (managed manually via Settings)
+ */
+export async function syncModuleAccessForRole(userId: string, role: string) {
+  let defaults: Record<string, AccessLevel> | null = null
+
+  if (role === 'SUPER_ADMIN') {
+    defaults = {
+      recovery: AccessLevel.ADMIN,
+      application: AccessLevel.ADMIN,
+      reward: AccessLevel.ADMIN,
+      users: AccessLevel.ADMIN,
+    }
+  } else if (role === 'ADMIN') {
+    defaults = {
+      recovery: AccessLevel.READ,
+      application: AccessLevel.READ,
+      reward: AccessLevel.WRITE,
+      users: AccessLevel.WRITE,
+    }
+  }
+
+  if (!defaults) return
+
+  for (const moduleKey of ALL_MODULES) {
+    const level = defaults[moduleKey]
+    if (!level) continue
+
+    const existing = await prisma.moduleAccess.findFirst({
+      where: { userId, moduleKey }
+    })
+    if (existing) {
+      await prisma.moduleAccess.update({
+        where: { id: existing.id },
+        data: { accessLevel: level }
+      })
+    } else {
+      await prisma.moduleAccess.create({
+        data: { userId, moduleKey, accessLevel: level }
+      })
+    }
+  }
+}
 
 /**
  * Check if the current user has access to a specific module at the required level.
- * Super Admins and Admins always have full access.
+ * 
+ * Access hierarchy:
+ * - SUPER_ADMIN: Full access to everything (implicit ADMIN level on all modules)
+ * - ADMIN: Implicit READ on all modules, implicit WRITE on users + reward.
+ *          Can have explicit moduleAccess records for higher levels.
+ * - Others: Only explicit moduleAccess records.
  * 
  * @param returnUserId - If true, returns the userId string on success instead of boolean
  * @returns boolean | string (userId) | false
@@ -22,19 +77,42 @@ export async function checkModuleAccess(moduleKey: string, requiredLevel: Access
   const session = await auth()
   if (!session?.user?.id) return returnUserId ? false : false
 
-  // Super Admins and Admins always have full access
-  if (session.user.role === 'SUPER_ADMIN' || session.user.role === 'ADMIN') {
+  const levels = [AccessLevel.READ, AccessLevel.WRITE, AccessLevel.APPROVE, AccessLevel.ADMIN]
+  const requiredLevelIndex = levels.indexOf(requiredLevel)
+
+  // SUPER_ADMIN: full access to everything
+  if (session.user.role === 'SUPER_ADMIN') {
     return returnUserId ? session.user.id : true
   }
 
-  // Use module access data embedded in the JWT session instead of hitting the DB again
+  // ADMIN: implicit defaults per module + explicit moduleAccess records
+  if (session.user.role === 'ADMIN') {
+    // ADMIN implicit defaults
+    const adminDefaults: Record<string, AccessLevel> = {
+      recovery: AccessLevel.READ,
+      application: AccessLevel.READ,
+      reward: AccessLevel.WRITE,
+      users: AccessLevel.WRITE,
+    }
+    const implicitLevel = adminDefaults[moduleKey] || AccessLevel.READ
+    const implicitIndex = levels.indexOf(implicitLevel)
+
+    // Also check explicit moduleAccess (may grant higher access)
+    const explicitAccess = session.user.moduleAccess?.find((a: any) => a.moduleKey === moduleKey)
+    const explicitIndex = explicitAccess ? levels.indexOf(explicitAccess.accessLevel as any) : -1
+
+    // Use the higher of implicit vs explicit
+    const effectiveIndex = Math.max(implicitIndex, explicitIndex)
+    const hasAccess = effectiveIndex >= requiredLevelIndex
+    if (!hasAccess) return returnUserId ? false : false
+    return returnUserId ? session.user.id : true
+  }
+
+  // Other roles: only explicit moduleAccess records
   const moduleAccess = session.user.moduleAccess?.find((a: any) => a.moduleKey === moduleKey)
   if (!moduleAccess) return returnUserId ? false : false
 
-  const levels = [AccessLevel.READ, AccessLevel.WRITE, AccessLevel.APPROVE, AccessLevel.ADMIN]
   const userLevelIndex = levels.indexOf(moduleAccess.accessLevel as any)
-  const requiredLevelIndex = levels.indexOf(requiredLevel)
-
   const hasAccess = userLevelIndex >= requiredLevelIndex
   if (!hasAccess) return returnUserId ? false : false
 
@@ -197,6 +275,9 @@ export async function createUser(data: {
         passwordHash
       }
     })
+
+    // Sync module access records for role-based defaults
+    await syncModuleAccessForRole(user.id, data.role)
 
     await logAudit({
       userId,
@@ -393,6 +474,9 @@ export async function updateUserRole(userId: string, newRole: "SUPER_ADMIN" | "A
     data: { globalRole: newRole }
   })
 
+  // Sync module access records for new role defaults
+  await syncModuleAccessForRole(userId, newRole)
+
   await logAudit({
     userId: callerId,
     action: AuditAction.UPDATE,
@@ -462,9 +546,15 @@ export async function registerUser(data: {
   fullName: string,
   designation: string,
   department?: string,
-  password: string
+  password: string,
+  turnstileToken: string
 }) {
   // Public registration - creates EMPLOYEE with no module access
+  const tokenVerification = await verifyTurnstileToken(data.turnstileToken);
+  if (!tokenVerification.success) {
+    return { success: false, error: tokenVerification.error };
+  }
+
   const passwordHash = await bcrypt.hash(data.password, 10)
 
   try {

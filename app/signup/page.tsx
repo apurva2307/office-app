@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -16,6 +17,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { registerUser } from "@/modules/users/actions";
 import Link from "next/link";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 export default function SignUpPage() {
   const [fullName, setFullName] = useState("");
@@ -24,6 +26,7 @@ export default function SignUpPage() {
   const [department, setDepartment] = useState("Accounts");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -43,6 +46,11 @@ export default function SignUpPage() {
       return;
     }
 
+    if (!turnstileToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -52,6 +60,7 @@ export default function SignUpPage() {
         designation,
         department: department || undefined,
         password,
+        turnstileToken,
       });
 
       if (result.success) {
@@ -150,9 +159,8 @@ export default function SignUpPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   required
                   minLength={6}
                   value={password}
@@ -161,15 +169,30 @@ export default function SignUpPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
+                <PasswordInput
                   id="confirmPassword"
-                  type="password"
                   required
                   minLength={6}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
+
+              <div className="flex justify-center mt-2">
+                <Turnstile
+                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+                  onSuccess={(token) => {
+                    setTurnstileToken(token);
+                    setError("");
+                  }}
+                  onError={() => setError("Captcha verification failed. Please try again.")}
+                  onExpire={() => {
+                    setTurnstileToken("");
+                    setError("Captcha expired. Please complete it again.");
+                  }}
+                />
+              </div>
+
               {error && <p className="text-sm text-red-500">{error}</p>}
             </CardContent>
             <CardFooter className="flex flex-col gap-3 mt-4">

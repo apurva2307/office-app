@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -16,21 +17,29 @@ import {
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { loginAction } from "@/modules/core/login.action";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!turnstileToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const result = await loginAction(email, password);
+      const result = await loginAction(email, password, turnstileToken);
       // If we reach here, login failed (success auto-redirects)
       if (result && !result.success) {
         setError(result.error || "Invalid credentials");
@@ -70,14 +79,29 @@ export default function LoginPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+
+              <div className="flex justify-center mt-2">
+                <Turnstile
+                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+                  onSuccess={(token) => {
+                    setTurnstileToken(token);
+                    setError("");
+                  }}
+                  onError={() => setError("Captcha verification failed. Please try again.")}
+                  onExpire={() => {
+                    setTurnstileToken("");
+                    setError("Captcha expired. Please complete it again.");
+                  }}
+                />
+              </div>
+
               {error && <p className="text-sm text-red-500">{error}</p>}
             </CardContent>
             <CardFooter className="flex flex-col gap-3 mt-4">

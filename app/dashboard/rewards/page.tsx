@@ -1,9 +1,11 @@
 import { getRewards, getUsers } from "@/modules/rewards/actions"
 import { checkModuleAccess } from "@/modules/users/actions"
 import { NominateDialog } from "@/modules/rewards/components/NominateDialog"
+import { RewardActions } from "@/modules/rewards/components/RewardActions"
 import { Award, ShieldAlert } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { AccessLevel } from "@prisma/client"
 
 export default async function RewardsPage() {
     const hasAccess = await checkModuleAccess("reward")
@@ -16,6 +18,8 @@ export default async function RewardsPage() {
             </div>
         )
     }
+
+    const canApprove = await checkModuleAccess("reward", AccessLevel.APPROVE)
 
     const rewards = await getRewards()
     const users = await getUsers()
@@ -47,9 +51,16 @@ export default async function RewardsPage() {
                             <p className="text-sm text-gray-600 mb-4">
                                 &quot;{reward.reason}&quot;
                             </p>
-                            <Badge variant={reward.status === 'APPROVED' ? 'default' : 'secondary'}>
-                                {reward.status}
-                            </Badge>
+                            <div className="flex flex-col gap-2">
+                                <div>
+                                    <Badge variant={reward.status === 'APPROVED' ? 'default' : 'secondary'}>
+                                        {reward.status}
+                                    </Badge>
+                                </div>
+                                {canApprove && reward.status === 'NOMINATED' && (
+                                    <RewardActions rewardId={reward.id} />
+                                )}
+                            </div>
                         </CardContent>
                     </Card>
                 ))}

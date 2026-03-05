@@ -26,7 +26,21 @@ async function main() {
         },
     })
 
+    // Sync module access records for SUPER_ADMIN (ADMIN level on all modules)
+    const modules = ['recovery', 'application', 'reward', 'users']
+    for (const moduleKey of modules) {
+        const existing = await prisma.moduleAccess.findFirst({
+            where: { userId: user.id, moduleKey }
+        })
+        if (!existing) {
+            await prisma.moduleAccess.create({
+                data: { userId: user.id, moduleKey, accessLevel: 'ADMIN' }
+            })
+        }
+    }
+
     console.log({ user })
+    console.log('Module access records synced for SUPER_ADMIN')
 }
 
 main()

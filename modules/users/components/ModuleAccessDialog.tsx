@@ -47,7 +47,7 @@ export function ModuleAccessDialog({ user, onUpdate }: { user: any, onUpdate: ()
         user.moduleAccess?.reduce((acc: any, cur: any) => ({ ...acc, [cur.moduleKey]: cur.accessLevel }), {}) || {}
     )
 
-    const isImplicitFullAccess = user.globalRole === "SUPER_ADMIN" || user.globalRole === "ADMIN"
+    const isImplicitFullAccess = user.globalRole === "SUPER_ADMIN"
 
     const handleSave = async () => {
         setLoading(true)
